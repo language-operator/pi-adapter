@@ -1,10 +1,10 @@
 ---
 description: Bring every pinned upstream dependency up to date, with an audit trail
-argument-hint: "[all|base|opencode|actions] (default: all)"
+argument-hint: "[all|base|pi|actions] (default: all)"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Bash(curl:*), Bash(jq:*), Bash(docker:*), Bash(helm:*), Bash(make:*), Bash(diff:*), Read, Edit, Grep
 ---
 
-Update the upstream dependencies of `opencode-adapter`. Scope: **$ARGUMENTS** (empty means `all`).
+Update the upstream dependencies of `pi-adapter`. Scope: **$ARGUMENTS** (empty means `all`).
 
 This runs for security and compliance: the point is not only that versions move, but that
 the move is **recorded** — old version, new version, digest, and what changed — so the PR
@@ -14,7 +14,7 @@ looks reviewed.
 ## The dependency surface
 
 This repo vendors almost nothing of its own; it is a thin layer over a base image. There
-are four groups, and two of them span multiple files that must move together.
+are four groups.
 
 **1. The `coding-runtime` base image** — the OS layer, the web terminal, `tini`, and the
 config ETL all come from here, so this is the security-relevant one.
@@ -27,25 +27,19 @@ config ETL all come from here, so this is the security-relevant one.
 conformance suite ships inside the image and CI extracts it from the build, so there is no
 separate suite version to keep in step.
 
-**2. The opencode CLI** — `Dockerfile` `ARG OPENCODE_VERSION`, installed as the npm package
-`opencode-ai`.
+**2. The pi CLI** — `Dockerfile` `ARG PI_VERSION`, installed as the npm package
+`@earendil-works/pi-coding-agent` (formerly `@mariozechner/pi-coding-agent`, deprecated
+since 0.74 — never go back to it).
 
 **3. GitHub Actions** — across `.github/workflows/{test,build-image,release-chart}.yaml`:
 `actions/checkout`, `docker/setup-buildx-action`, `docker/login-action`,
 `docker/metadata-action`, `docker/build-push-action`, `azure/setup-helm`.
 
-**4. Vendored upstream files** — `runtime.json` and `emit.mjs` are **verbatim copies** of
-`examples/opencode/` in `coding-runtime`. Nothing fails when they drift from upstream, which
-is exactly why they get missed. Re-copy and diff them whenever the base moves.
-
-**5. The `/iterate` command** — `.claude/commands/iterate.md` and the three scripts in
-`.claude/commands/iterate/` are **verbatim copies** from `language-operator` (canonical, see
-language-operator#932), except `iterate.md`'s `allowed-tools` build-tool entries and its
-`## Testing` section, which are marked `<!-- per-repo -->`. These drift the same way the
-files above do, and silently: a stale copy still runs, it just runs the old steps. Re-copy
-the scripts wholesale; for `iterate.md`, lift the two per-repo regions out of the current
-file, re-copy the canonical body, and put them back — then diff against canonical to prove
-nothing else moved.
+**4. Vendored upstream files** — `runtime.json` and `emit.mjs` are meant to be **verbatim
+copies** of `examples/pi/` in `coding-runtime`. Nothing fails here when they drift from
+upstream, which is exactly why they get missed. Re-copy and diff them whenever the base
+moves. If the base tag has no `examples/pi/` yet, this repo is the source of truth: say so
+in the PR and skip the re-copy rather than inventing one.
 
 ## Rules that must not be broken
 
@@ -55,8 +49,8 @@ nothing else moved.
   satisfy — every boot warns about a mismatch that is not real — and which also fails the
   conformance suite's own `reports a version` check, since that asserts semver. Only
   released semver tags.
-- **opencode: take the `latest` dist-tag only.** The package also publishes `next`, `beta`
-  and `dev` tags carrying `0.0.0-*` versions; none of them belong in a release image.
+- **pi: take the `latest` dist-tag only.** The package also publishes `legacy-node20`,
+  a maintenance line for an older Node; the base ships Node 24, so it never belongs here.
 - **Do not unpin anything to make an update easier.** If a pin is in the way, that is the
   finding — report it rather than loosening it.
 
@@ -77,8 +71,7 @@ Stop and report if any precondition fails; do not continue past a failure.
 the "before" column of the audit trail.
 
 ```bash
-grep -nE 'ARG (BASE|OPENCODE_VERSION)' Dockerfile
-grep -rn 'CODING_RUNTIME_VERSION' Makefile hack/conformance.sh .github/workflows/
+grep -nE 'ARG (BASE|PI_VERSION)' Dockerfile
 grep -rn 'uses: .*@' .github/workflows/
 ```
 
@@ -98,10 +91,10 @@ curl -sI -H "Authorization: Bearer $T" \
   | grep -i docker-content-digest
 ```
 
-opencode CLI — the `latest` dist-tag:
+pi CLI — the `latest` dist-tag, and its Node requirement (must be satisfied by the base):
 
 ```bash
-npm view opencode-ai dist-tags --json
+npm view @earendil-works/pi-coding-agent dist-tags engines --json
 ```
 
 If npm fails with `ENOENT … mkdir '/home/node/.npm'`, the cache directory is read-only in
@@ -132,22 +125,24 @@ record why.
 
 **5. Apply the updates** for the requested scope.
 
-- **Base:** update `ARG BASE` with the new tag **and** its digest, then the three
-  `CODING_RUNTIME_VERSION` locations to the matching `vX.Y.Z`.
+- **Base:** update `ARG BASE` with the new tag **and** its digest.
 - **Vendored files:** re-copy from the new base tag and diff before committing, so an
   upstream change to the emitter or manifest is seen rather than silently kept or silently
   clobbered:
 
   ```bash
-  gh api repos/language-operator/coding-runtime/contents/examples/opencode/runtime.json?ref=<vX.Y.Z> --jq .content | base64 -d > /tmp/runtime.json
-  gh api repos/language-operator/coding-runtime/contents/examples/opencode/emit.mjs?ref=<vX.Y.Z>   --jq .content | base64 -d > /tmp/emit.mjs
+  gh api repos/language-operator/coding-runtime/contents/examples/pi/runtime.json?ref=<vX.Y.Z> --jq .content | base64 -d > /tmp/runtime.json
+  gh api repos/language-operator/coding-runtime/contents/examples/pi/emit.mjs?ref=<vX.Y.Z>   --jq .content | base64 -d > /tmp/emit.mjs
   diff -u runtime.json /tmp/runtime.json; diff -u emit.mjs /tmp/emit.mjs
   ```
 
   If either differs, take the upstream copy and describe the change in the PR. If
   `runtime.json` gained a field this adapter should set, that is a real decision — surface
   it rather than copying past it.
-- **opencode:** update `ARG OPENCODE_VERSION`.
+- **pi:** update `ARG PI_VERSION`. pi rewrites its own config schema between releases
+  (models.json, settings.json, mcp.json), and nothing here tests the emitter against the
+  new CLI: install it locally, seed a config with the emitter, and run
+  `pi --list-models` and `pi mcp list` against it before committing.
 - **Actions:** update the `uses:` pins.
 
 **6. Re-read how the suite is obtained.** CI and `make test` extract
@@ -158,7 +153,7 @@ fetching a tag, which is what let the suite drift from the runtime in the first 
 **7. Verify.**
 
 ```bash
-helm lint chart && helm template opencode chart >/dev/null
+helm lint chart && helm template pi chart >/dev/null
 make test        # builds the image and runs the conformance suite; needs Docker
 ```
 
