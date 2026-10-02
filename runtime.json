@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "name": "opencode",
-  "displayName": "opencode",
+  "name": "pi",
+  "displayName": "pi",
   "role": "main",
   "requires": { "codingRuntime": ">=0.1.2 <1.0.0" },
-  "env": { "OPENCODE_CONFIG_DIR": "${STATE_DIR}/opencode" },
-  "preflight": [{ "path": "${STATE_DIR}/opencode", "mode": "700" }],
+  "env": { "PI_CODING_AGENT_DIR": "${STATE_DIR}/pi", "PI_OFFLINE": "1" },
+  "preflight": [{ "path": "${STATE_DIR}/pi", "mode": "700" }],
   "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },
   "serve": { "surface": "terminal", "port": 8080, "originGuard": true },
   "terminal": {
-    "tmuxSession": "opencode",
-    "launch": ["launch-opencode"],
+    "tmuxSession": "pi",
+    "launch": ["launch-pi"],
     "cwd": "${WORKDIR}",
     "wsPath": "/ws",
     "keepaliveSeconds": 25
