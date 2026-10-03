@@ -40,10 +40,11 @@ it.
   pi interpolates `$NAME`/`${NAME}`, and **runs any value starting with `!` as a shell
   command**. The emitter refuses such a header and falls back from such a gateway key;
   keep that guard.
-- `runtime.json` and `emit.mjs` are intended to be verbatim copies of upstream
-  `coding-runtime/examples/pi/`, like the other adapters. Until that example exists
-  upstream, **this repo is the source of truth**. Once it lands, edit them upstream first
-  and re-copy via `/update-dependencies`.
+- `runtime.json` and `emit.mjs` are **verbatim copies** of upstream
+  `coding-runtime/examples/pi/`, like the other adapters, and coding-runtime's
+  `example-drift.yaml` fails when they differ from this repo's `main`. Change both sides
+  together: an emitter change here needs a matching PR there (goldens included), merged
+  after this one, since the drift check compares against `main`.
 - `launch-pi.sh`: what tmux runs, `pi --continue`. Unlike opencode it needs no "has a
   session store" guard. With nothing to resume, pi just starts a new session.
 - `chart/`: the Helm chart registering the cluster-scoped `LanguageAgentRuntime` named
